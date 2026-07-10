@@ -1,0 +1,99 @@
+/*
+ * Keeper design tokens.
+ *
+ * Light values are authoritative (from the Figma V0 variable set / token sheet).
+ * Dark values are derived pending design review — same semantic names, inverted
+ * neutrals, nudged chroma so the accent + action hues read on dark surfaces.
+ *
+ * Themes key off <html data-theme="light|dark"> (set by the store).
+ */
+
+:root,
+:root[data-theme="light"] {
+  /* background */
+  --background-primary: #ffffff;
+  --background-secondary: #f5f5f4;
+  --background-page: #fafafa;
+  --background-primary-inverted: #0f0e0d;
+  --background-subtle-pressed: #e4e1dd;
+
+  /* foreground */
+  --foreground-primary: #0f0e0d;
+  --foreground-secondary: #6a6660;
+  --foreground-muted: #848079;
+  --foreground-disabled: #b8b5b0;
+  --foreground-primary-inverted: #ffffff;
+  --foreground-accent: #1a5bdb;
+
+  /* border / stroke */
+  --border-primary: #ebe9e8;
+  --border-secondary: #e4e1dd;
+  --border-base: #f1efec;
+  --stroke-outline: rgba(16, 16, 16, 0.08);
+
+  /* actions (timeline track types) */
+  --action-audio-bg: #f4e7ee;
+  --action-audio-border: #912f5d;
+  --action-video-bg: #e8edf9;
+  --action-video-border: #1e4199;
+  --action-text-bg: #fef5e6;
+  --action-text-border: #fac166;
+
+  /* elevation */
+  --shadow-modal: 0 0 0 0.5px var(--stroke-outline), 0 28px 32px 0 rgba(0, 0, 0, 0.08);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+:root[data-theme="dark"] {
+  /* background */
+  --background-primary: #171614;
+  --background-secondary: #201f1c;
+  --background-page: #121110;
+  --background-primary-inverted: #f5f5f4;
+  --background-subtle-pressed: #2c2a27;
+
+  /* foreground */
+  --foreground-primary: #f2f0ed;
+  --foreground-secondary: #a39f98;
+  --foreground-muted: #7d7972;
+  --foreground-disabled: #57544f;
+  --foreground-primary-inverted: #0f0e0d;
+  --foreground-accent: #5b8def;
+
+  /* border / stroke */
+  --border-primary: #2b2926;
+  --border-secondary: #34312d;
+  --border-base: #242220;
+  --stroke-outline: rgba(255, 255, 255, 0.1);
+
+  /* actions (timeline track types) */
+  --action-audio-bg: #3a2230;
+  --action-audio-border: #c4638f;
+  --action-video-bg: #1f2a44;
+  --action-video-border: #6e93e8;
+  --action-text-bg: #3a2f1a;
+  --action-text-border: #d9a453;
+
+  /* elevation */
+  --shadow-modal: 0 0 0 0.5px var(--stroke-outline), 0 28px 32px 0 rgba(0, 0, 0, 0.45);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+:root {
+  /* radii */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-lg: 10px;
+
+  /* spacing */
+  --space-4: 4px;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-24: 24px;
+
+  /* typography */
+  --font-brand: "Bradford", "Bradford Trial", Georgia, "Times New Roman", serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Segoe UI", sans-serif;
+}

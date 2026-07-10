@@ -1,0 +1,21 @@
+---
+description: EDL schema package rules (validation boundary, bounds, rebuild)
+globs: packages/edl/**
+alwaysApply: false
+---
+
+# EDL schema (packages/edl)
+
+The schema is a **security boundary**: project files are a shareable interchange format and LLMs author them. Every field must stay hostile-input-safe.
+
+- Numerics: `.finite()` + explicit bounds (timeline seconds cap at `MAX_TIMELINE_SEC`). Unbounded values hang the timeline/player (JSON `1e400` parses to `Infinity`).
+- Media paths (`src`, `proxySrc`, caption `source`): `RelativePathSchema` — no `..`, absolute paths, drive letters, UNC, or NUL.
+- Colors: `CssColorSchema` allowlist (hex / rgb() / hsl() / bare names) — arbitrary strings reach inline CSS where `url(...)` fires network requests.
+- Strings and arrays get max lengths/sizes. New collection fields need caps too.
+
+## Change protocol
+1. Add the field with a **default** (old files must keep parsing) and mirror the type in `types.ts` exports.
+2. `npm run build:edl` after every schema change — the app and scripts import from `dist/`.
+3. Renderer must tolerate EDLs parsed by an older schema (a stale main process across HMR): nullish-fallback new theme/track fields at the use site.
+4. Add hostile-input coverage to `schema.test.ts` for anything new (reject Infinity/traversal/oversize, accept the sane case).
+5. If LLM output could violate the new constraint, teach `sanitizeEdl` (app/scripts/edl-util.mjs) to repair it.

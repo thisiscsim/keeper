@@ -1,0 +1,14 @@
+---
+description: Delivery workflow for this repo (branches, gate, PR flow)
+alwaysApply: true
+---
+
+# Delivery workflow
+
+- Branch per change off `main` (`fix/…`, `feat/…`, `polish/…`, `docs/…`). Never commit to `main` directly; never stack PRs unless explicitly agreed (merge-order accidents have bitten us twice).
+- Gate before every push: `npm run typecheck && npm test && npm run build` (build matters — it resolves CSS/asset imports that typecheck and vitest miss).
+- Push over HTTPS with the gh credential helper (SSH agent is flaky here):
+  `git -c credential.helper= -c credential.helper='!gh auth git-credential' push https://github.com/thisiscsim/aperture.git HEAD:<branch>`
+- PR flow: open with a Summary + Test plan, wait for `gh pr checks <n> --watch`, merge with `--merge --delete-branch`, then ff-sync local `main` from the same HTTPS remote.
+- Call out in the summary when a change requires restarting `npm run dev` (main-process/preload/engine-script changes — HMR only covers the renderer).
+- Generated artifacts live under the user's `~/Documents/Aperture` (never the repo). `/projects/` and `/styles/` in the repo root are gitignored, root-anchored on purpose.

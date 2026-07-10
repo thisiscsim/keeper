@@ -1,0 +1,23 @@
+<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="IconSettingsGear3" clip-path="url(#clip0_0_4)">
+<path id="Vector" d="M13.5 7.99986C13.5 9.0018 13.2321 9.9412 12.764 10.7503C12.2811 11.5849 11.5851 12.2809 10.7505 12.7638C9.9414 13.2319 9.002 13.4999 8 13.4999C6.998 13.4999 6.05863 13.2319 5.24955 12.7638C4.41492 12.2809 3.71898 11.5849 3.23607 10.7503C2.76793 9.94126 2.5 9.00186 2.5 7.99986C2.5 6.99786 2.76796 6.05842 3.23612 5.24932C3.71903 4.41474 4.41495 3.71883 5.24954 3.23594C6.05862 2.76781 6.998 2.49988 8 2.49988C9.002 2.49988 9.9414 2.76781 10.7505 3.23594C11.5851 3.71885 12.281 4.4148 12.7639 5.24942C13.2321 6.0585 13.5 6.99786 13.5 7.99986Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_2" d="M9.5 7.99986C9.5 8.82833 8.8284 9.49986 8 9.49986C7.72673 9.49986 7.47053 9.4268 7.24987 9.29913C6.8016 9.03973 6.5 8.55506 6.5 7.99986C6.5 7.44473 6.8016 6.96 7.24987 6.7006C7.47053 6.57295 7.72673 6.49988 8 6.49988C8.8284 6.49988 9.5 7.17146 9.5 7.99986Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_3" d="M8 13.4999V14.8333" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_4" d="M2.50001 7.99988H1.16667" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_5" d="M8 2.49987V1.16667" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_6" d="M9.5 7.99988H13.5L14.8333 8.00001" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_7" d="M4.58333 2.08203L5.24954 3.23594L7.24987 6.7006" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_8" d="M10.75 12.7638L11.4162 13.9177" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_9" d="M2.08203 4.58309L3.23599 5.24933" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_10" d="M12.7643 10.7503L13.9182 11.4164" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_11" d="M2.08203 11.4165L3.23594 10.7503" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_12" d="M12.7643 5.24942L13.9182 4.58321" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_13" d="M4.58333 13.9176L5.24954 12.7638L7.24987 9.29911" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="Vector_14" d="M10.75 3.23594L11.4162 2.08203" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<defs>
+<clipPath id="clip0_0_4">
+<rect width="16" height="16" fill="white"/>
+</clipPath>
+</defs>
+</svg>

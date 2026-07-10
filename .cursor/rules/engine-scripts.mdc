@@ -1,0 +1,27 @@
+---
+description: Engine script conventions (app/scripts — protocol, LLM, safety)
+globs: app/scripts/**
+alwaysApply: false
+---
+
+# Engine script conventions (app/scripts)
+
+## Contract with the app
+- Plain Node ESM (`.mjs`), spawned by the main process. Communicate over stdout with line protocol: `PHASE <text>`, `PROGRESS <0-100>`, `DONE <result>`; errors to stderr as `ERROR <message>` + non-zero exit.
+- Resolve the project dir from `process.env.APERTURE_PROJECTS_DIR` (fallback `<repo>/projects`), args via `--slug <slug>` style flags.
+- `edl.json` read from disk is untrusted (shareable file): re-check any path derived from it stays inside the project dir before touching the filesystem or ffmpeg.
+
+## LLM calls
+- Always go through `llm.mjs` (`resolveModel()`, `isLlmConfigured()`, `reasoningEffort()`); never instantiate a provider directly.
+- Cap output: `maxOutputTokens` set explicitly. `providerOptions: { openai: { reasoningEffort: reasoningEffort() } }`.
+- Model output is repaired, not trusted: `extractJson` → `sanitizeEdl` → `parseEdl`, with one retry carrying the validation error back to the model.
+- Deterministic insurance after every whole-EDL model response: `enforceStyle` (look) and `restoreAudioTracks` (never lose music/voiceover).
+
+## Media
+- ffmpeg = `ffmpeg-static` import; spawn argv arrays only (no shell strings).
+- Voice/TTS audio must be loudness-normalized (two-pass loudnorm, −14 LUFS / −1.5 dBTP) before landing in a project.
+- Cache expensive synth/analysis keyed by content hash so re-runs don't re-burn API credits.
+
+## Testing
+- Pure logic lives in `*-util.mjs` with a sibling `*.test.mjs` (vitest node project). Scripts themselves stay thin.
+- `node --check app/scripts/<file>.mjs` before committing.

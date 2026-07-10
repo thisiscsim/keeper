@@ -1,0 +1,17 @@
+{
+  "score": 78,
+  "subscores": [
+    { "key": "hook", "label": "Hook (first 2s)", "score": 20, "max": 25, "note": "Opens on the title card over the first clip. Stronger would be a striking shot before the title lands." },
+    { "key": "pacing", "label": "Pacing", "score": 13, "max": 15, "note": "Three clips, ~4s each. Tighten the middle clip to keep energy up." },
+    { "key": "captions", "label": "Captions", "score": 12, "max": 15, "note": "Caption present at the end; extend coverage across the whole video for muted viewing." },
+    { "key": "safe", "label": "Safe areas", "score": 10, "max": 10, "note": "Text and captions respect the platform UI zones." },
+    { "key": "length", "label": "Length", "score": 8, "max": 10, "note": "~11s — on the short side; 15-25s gives the story more room." },
+    { "key": "audio", "label": "Audio", "score": 5, "max": 15, "note": "No music bed. Add an upbeat track and duck it under any voice." },
+    { "key": "ending", "label": "Ending", "score": 10, "max": 10, "note": "Lands on the Osaka clip with the JAPAN caption — clear closing beat." }
+  ],
+  "fixes": [
+    { "issue": "Audio", "fix": "Add a music bed — short-form with no audio underperforms badly." },
+    { "issue": "Hook", "fix": "Lead with your most striking 1-2s shot, then bring in the title." },
+    { "issue": "Captions", "fix": "Caption the whole video, not just the closing line." }
+  ]
+}

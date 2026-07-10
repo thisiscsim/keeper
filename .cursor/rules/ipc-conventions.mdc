@@ -1,0 +1,34 @@
+---
+description: Main-process + IPC conventions (path guards, result shapes, keys)
+globs: app/src/main/**,app/src/preload/**
+alwaysApply: false
+---
+
+# Main process & IPC conventions
+
+## Every renderer-supplied path/id is untrusted
+- Filesystem access keyed by a slug/id MUST go through `safeProjectPath()` / `safeStylePath()` (they throw on escape; they compare against `root + sep`).
+- Validate id shape at the IPC boundary before spawning scripts: `/^[a-z0-9][a-z0-9_-]{0,63}$/i` (see `runScript`).
+- Filenames from the renderer: reject anything where `basename(file) !== file`.
+
+## Result shape
+Handlers never throw across IPC. Return `{ ok: boolean, error?: string }` (plus payload fields):
+
+```ts
+ipcMain.handle("thing:do", (_e, slug: string) => {
+  try { ... return { ok: true }; }
+  catch (err) { return { ok: false, error: String(err) }; }
+});
+```
+
+## Long-running work
+- Spawn engine scripts via `runScript`/`runScriptArgs` — they stream the script's `PHASE`/`PROGRESS` lines to `${prefix}:phase` / `${prefix}:progress` channels.
+- Guard event senders: check `event.sender.isDestroyed()` before `.send()` in delayed callbacks.
+
+## Secrets & settings
+- API keys live in `AppSettings` (settings.json) AND are injected into `process.env` via `applyAgentEnv` so spawned scripts inherit them. Env vars from `.env.local`/shell always win — capture the lock in `envLocked` once at startup and never overwrite locked vars.
+- New settings fields: parse defensively in `readSettings` (unknown JSON on disk), update the mirror `AppSettings` interface in `app/src/preload/index.ts`.
+
+## Remember
+- Main-process changes need a dev-app restart (renderer HMR does not reload main/preload). Say so in the PR/summary.
+- Writes to a project's `edl.json` from the app must set `lastSelfWrite` (via `writeEdl`) or the file watcher echoes a reload that clobbers editor state.

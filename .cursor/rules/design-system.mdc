@@ -1,0 +1,27 @@
+---
+description: Renderer design-system conventions (tokens, UI kit, icons, CSS)
+globs: app/src/renderer/**
+alwaysApply: false
+---
+
+# Design system conventions
+
+## Tokens, never hardcoded values
+- Colors come from `styles/tokens.css` custom properties (`--background-primary`, `--foreground-secondary`, `--border-primary`, ...). Both themes must work — check `:root[data-theme="dark"]` derivations before adding a raw hex.
+- Radii/spacing/typography: `--radius-*`, `--space-*`, `--font-ui`, `--font-brand`.
+- Needing a "slightly different" color? Prefer `color-mix(in srgb, var(--token) N%, var(--other-token))` over new hex values.
+
+## Components
+- Reuse the UI kit first: `Button`, `IconButton`, `Badge`, `Modal`, `Field`/`Input`/`TextArea`/`Select`, `Icon` from `components/ui`.
+- `Field` renders a `<div>`, not `<label>` — label activation double-fires hidden file inputs. Don't "fix" it back.
+- Icons: only names from the harvested set (`components/ui/Icon.tsx`, SVGs normalized to `currentColor`). New icons come from Figma, normalized the same way.
+- Dialogs/dropdowns must close on Escape (`useEscapeKey`) and outside click.
+
+## CSS placement
+- Editor chrome styles: `styles/editor.css`. UI kit: `styles/ui.css`. Home + legacy: `styles.css`. Delete dead CSS when retiring a component.
+- File inputs are hidden `<input type="file">` + a styled `upload-area` div; snapshot `FileList` synchronously (it's live and emptied by `input.value = ""`).
+
+## Store & interaction
+- Every EDL mutation goes through `updateEdl(mutate)` — it's one undo step and schedules the debounced save. Batch multi-asset operations into ONE `updateEdl` call.
+- Editor-wide shortcuts live in `App.tsx` (Cmd+Z, T, Cmd+\, Space) — never inside a component that unmounts (e.g. Timeline in focus mode). Always guard: skip when typing in INPUT/TEXTAREA/SELECT/contentEditable.
+- Long text/media lists: cap visible rows and scroll within (`clip-list-capped` pattern).

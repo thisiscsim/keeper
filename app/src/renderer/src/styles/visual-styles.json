@@ -1,0 +1,98 @@
+[
+  {
+    "id": "swiss-pulse",
+    "name": "Swiss Pulse",
+    "inspiration": "Müller-Brockmann grid modernism",
+    "palette": ["#111111", "#F4F4F2", "#E2231A"],
+    "fontFamily": "Inter, system-ui, sans-serif",
+    "captionStyle": "block",
+    "anim": "per-character-rise",
+    "transition": "wipe",
+    "energy": 0.7,
+    "avoid": ["decorative gradients", "soft drop shadows", "script fonts"]
+  },
+  {
+    "id": "velvet-standard",
+    "name": "Velvet Standard",
+    "inspiration": "Vignelli editorial restraint",
+    "palette": ["#1A1714", "#F3ECE0", "#8C6A3F"],
+    "fontFamily": "ui-serif, Georgia, serif",
+    "captionStyle": "word",
+    "anim": "soft-blur-in",
+    "transition": "fade",
+    "energy": 0.3,
+    "avoid": ["bouncy easing", "neon accents", "fast cuts"]
+  },
+  {
+    "id": "deconstructed",
+    "name": "Deconstructed",
+    "inspiration": "Neville Brody / Ray Gun off-grid energy",
+    "palette": ["#F2F0EB", "#16151A", "#F5C518"],
+    "fontFamily": "Inter, system-ui, sans-serif",
+    "captionStyle": "word",
+    "anim": "per-word-crossfade",
+    "transition": "slide",
+    "energy": 0.9,
+    "avoid": ["perfect centering", "calm pacing", "pastel palettes"]
+  },
+  {
+    "id": "maximalist-type",
+    "name": "Maximalist Type",
+    "inspiration": "Paula Scher oversized typography",
+    "palette": ["#0E0E0E", "#FFD400", "#1453F0"],
+    "fontFamily": "Inter, system-ui, sans-serif",
+    "captionStyle": "block",
+    "anim": "spring-scale-in",
+    "transition": "slide",
+    "energy": 0.85,
+    "avoid": ["thin weights", "lots of empty space", "muted color"]
+  },
+  {
+    "id": "data-drift",
+    "name": "Data Drift",
+    "inspiration": "Refik Anadol generative gradients",
+    "palette": ["#EAF2FF", "#0A0E1A", "#5BC8FF"],
+    "fontFamily": "'SF Mono', ui-monospace, monospace",
+    "captionStyle": "word",
+    "anim": "soft-blur-in",
+    "transition": "fade",
+    "energy": 0.6,
+    "avoid": ["warm earth tones", "serif display type", "hard cuts"]
+  },
+  {
+    "id": "soft-signal",
+    "name": "Soft Signal",
+    "inspiration": "Sagmeister warmth and play",
+    "palette": ["#2A211B", "#FBEFE2", "#F0654C"],
+    "fontFamily": "system-ui, -apple-system, sans-serif",
+    "captionStyle": "karaoke",
+    "anim": "spring-scale-in",
+    "transition": "fade",
+    "energy": 0.5,
+    "avoid": ["cold blues", "corporate stiffness", "all-caps everything"]
+  },
+  {
+    "id": "folk-frequency",
+    "name": "Folk Frequency",
+    "inspiration": "Earthy, handmade, analog warmth",
+    "palette": ["#2C241B", "#EFE3CF", "#B5763A"],
+    "fontFamily": "ui-serif, Georgia, serif",
+    "captionStyle": "word",
+    "anim": "mask-reveal-up",
+    "transition": "fade",
+    "energy": 0.45,
+    "avoid": ["digital neon", "mechanical motion", "pure black/white"]
+  },
+  {
+    "id": "shadow-cut",
+    "name": "Shadow Cut",
+    "inspiration": "High-contrast cinematic noir",
+    "palette": ["#F5F5F5", "#0B0B0B", "#C9A24B"],
+    "fontFamily": "ui-serif, Georgia, serif",
+    "captionStyle": "block",
+    "anim": "scale-down-fade",
+    "transition": "wipe",
+    "energy": 0.55,
+    "avoid": ["flat lighting", "playful color", "bouncy easing"]
+  }
+]

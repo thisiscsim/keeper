@@ -1,0 +1,35 @@
+{
+  "name": "keeper",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Keeper — scaffolded from the Aperture video studio.",
+  "workspaces": [
+    "packages/*",
+    "app"
+  ],
+  "scripts": {
+    "build:edl": "npm run build --workspace @reel/edl",
+    "predev": "npm run build:edl",
+    "dev": "npm --workspace app run dev",
+    "prebuild": "npm run build:edl",
+    "build": "npm --workspace app run build",
+    "pretypecheck": "npm run build:edl",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "pretest": "npm run build:edl",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "overrides": {
+    "vite": "^6.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^22.10.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "jsdom": "^29.1.1",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.6"
+  }
+}
