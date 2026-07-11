@@ -1,203 +1,155 @@
-import { type CSSProperties, useEffect } from "react";
-import { EditorHeader } from "./components/EditorHeader";
+import { useEffect } from "react";
+import { Header } from "./components/Header";
 import { LeftRail } from "./components/LeftRail";
-import { PreviewStage } from "./components/PreviewStage";
-import { RightPanel } from "./components/RightPanel";
-import { Timeline } from "./components/Timeline";
+import { LibraryGrid } from "./components/LibraryGrid";
+import { Loupe } from "./components/Loupe";
+import { ReviewMode } from "./components/ReviewMode";
+import { SettingsModal } from "./components/SettingsModal";
 import { ExportModal } from "./components/ExportModal";
-import { Home } from "./components/Home";
-import { useEditor, type PanelId } from "./store";
+import { RejectsModal } from "./components/RejectsModal";
+import { TasteModal } from "./components/TasteModal";
+import { useKeeper } from "./store";
+
+function isTypingContext(target: EventTarget | null): boolean {
+  const t = target as HTMLElement | null;
+  if (!t) return false;
+  return t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable;
+}
 
 export function App(): JSX.Element {
-  const view = useEditor((s) => s.view);
-  const slug = useEditor((s) => s.slug);
-  const edl = useEditor((s) => s.edl);
-  const loadError = useEditor((s) => s.loadError);
-  const notice = useEditor((s) => s.notice);
-  const setNotice = useEditor((s) => s.setNotice);
-  const setProject = useEditor((s) => s.setProject);
-  const setLoadError = useEditor((s) => s.setLoadError);
-  const setReload = useEditor((s) => s.setReload);
-  const undoEdl = useEditor((s) => s.undoEdl);
-  const redoEdl = useEditor((s) => s.redoEdl);
-  const toggleTheme = useEditor((s) => s.toggleTheme);
-  const panelSizes = useEditor((s) => s.panelSizes);
-  const panelsHidden = useEditor((s) => s.panelsHidden);
-  const togglePanels = useEditor((s) => s.togglePanels);
-  const playerCtl = useEditor((s) => s.playerCtl);
+  const view = useKeeper((s) => s.view);
+  const activeId = useKeeper((s) => s.activeId);
+  const modal = useKeeper((s) => s.modal);
+  const notice = useKeeper((s) => s.notice);
+  const setNotice = useKeeper((s) => s.setNotice);
+  const refreshLibrary = useKeeper((s) => s.refreshLibrary);
+  const setTask = useKeeper((s) => s.setTask);
 
-  // Space toggles playback anywhere in the editor outside a text field —
-  // including Cmd+\ focus mode, where the timeline (and its transport) is
-  // unmounted.
+  // Initial load + live refresh when scripts/agents write to the library.
   useEffect(() => {
-    if (view !== "editor") return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.code !== "Space") return;
-      const t = e.target as HTMLElement;
-      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable) return;
+    void refreshLibrary();
+    const off = window.api?.onLibraryChanged(() => void refreshLibrary());
+    return () => off?.();
+  }, [refreshLibrary]);
+
+  // Stream task progress (import/judge/export/reprocess) into the store.
+  useEffect(() => {
+    const offs: (() => void)[] = [];
+    for (const name of ["import", "judge", "export", "reprocess"] as const) {
+      const offPhase = window.api?.onPhase(name, (phase) => setTask(name, { running: true, phase }));
+      const offProgress = window.api?.onProgress(name, (progress) => setTask(name, { running: true, progress }));
+      if (offPhase) offs.push(offPhase);
+      if (offProgress) offs.push(offProgress);
+    }
+    return () => offs.forEach((off) => off());
+  }, [setTask]);
+
+  // Drop files/folders anywhere in the window to import them.
+  useEffect(() => {
+    const onDragOver = (e: DragEvent) => e.preventDefault();
+    const onDrop = (e: DragEvent) => {
       e.preventDefault();
-      playerCtl?.toggle();
+      const files = Array.from(e.dataTransfer?.files ?? []);
+      const paths = files
+        .map((f) => window.api?.getPathForFile(f))
+        .filter((p): p is string => Boolean(p));
+      if (paths.length > 0) void useKeeper.getState().importSources(paths);
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [view, playerCtl]);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, []);
 
-  // Cmd+\ — focus mode: hide rails + timeline, keep only the canvas (Figma-style).
+  // All app-wide shortcuts live here (never inside components that unmount).
   useEffect(() => {
-    if (view !== "editor") return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "\\" && (e.metaKey || e.ctrlKey)) {
+      const s = useKeeper.getState();
+
+      // Cmd+Z / Shift+Cmd+Z — verdict history.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        if (isTypingContext(e.target)) return;
         e.preventDefault();
-        togglePanels();
+        if (e.shiftKey) void s.redo();
+        else void s.undo();
+        return;
+      }
+
+      // Cmd+F — focus the search field.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        document.querySelector<HTMLInputElement>(".search-input")?.focus();
+        return;
+      }
+
+      if (isTypingContext(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+
+      // T — theme toggle.
+      if (e.key.toLowerCase() === "t" && !e.shiftKey) {
+        s.toggleTheme();
+        return;
+      }
+
+      // Culling verdicts apply to the selection (or the loupe asset).
+      const targets = s.selectionOr(null);
+      const key = e.key.toLowerCase();
+      if (key === "p" || key === "k") {
+        if (targets.length > 0) void s.setVerdict(targets, { flag: "pick" });
+        return;
+      }
+      if (key === "x" || key === "r") {
+        if (targets.length > 0) void s.setVerdict(targets, { flag: "reject" });
+        return;
+      }
+      if (key === "u") {
+        if (targets.length > 0) void s.setVerdict(targets, { flag: "unrated" });
+        return;
+      }
+      if (/^[0-5]$/.test(e.key)) {
+        if (targets.length > 0) void s.setVerdict(targets, { rating: Number(e.key) });
+        return;
+      }
+
+      // Space — open/close the loupe on the current selection.
+      if (e.code === "Space") {
+        e.preventDefault();
+        if (s.activeId) s.closeLoupe();
+        else if (targets.length > 0) s.openLoupe(targets[0]);
+        return;
+      }
+
+      // Arrows — navigate the loupe (grid navigation is mouse-driven).
+      if (s.activeId && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
+        e.preventDefault();
+        s.navLoupe(e.key === "ArrowRight" ? 1 : -1);
+        return;
+      }
+
+      if (e.key === "Escape") {
+        if (s.activeId) s.closeLoupe();
+        else s.clearSelection();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [view, togglePanels]);
-
-  // 'T' toggles light/dark anywhere, unless the user is typing in a field.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== "t" || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-      const t = e.target as HTMLElement;
-      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable) return;
-      toggleTheme();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [toggleTheme]);
-
-  // Cmd+Z / Shift+Cmd+Z for EDL history. Text fields keep their native undo.
-  useEffect(() => {
-    if (view !== "editor") return;
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
-      const t = e.target as HTMLElement;
-      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable) return;
-      e.preventDefault();
-      if (e.shiftKey) redoEdl();
-      else undoEdl();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [view, undoEdl, redoEdl]);
-
-  // Load (and live-reload) the active project whenever we enter the editor.
-  useEffect(() => {
-    if (view !== "editor" || !slug) return;
-
-    // Returns the load promise so busy flows (Generate/Auto-improve) can keep
-    // their loading state up until the fresh cut is actually in the store.
-    const load = () =>
-      window.api
-        ?.loadProject(slug)
-        .then((res) => {
-          if (res.ok && res.edl) {
-            setProject({ edl: res.edl, slug: res.slug, dir: res.dir, promptText: res.promptText, meta: res.meta });
-          } else {
-            setLoadError((res.errors ?? ["unknown error"]).join("; "));
-          }
-        })
-        .catch((err) => setLoadError(String(err)));
-    setReload(load);
-    load();
-
-    void window.api?.watchProject(slug);
-    const off = window.api?.onProjectChanged((changed) => {
-      if (changed === slug) load();
-    });
-    return () => off?.();
-  }, [view, slug, setProject, setLoadError, setReload]);
+  }, []);
 
   return (
-    <>
-      {view === "home" ? (
-        <Home />
-      ) : (
-        <div
-          className={`editor-shell ${panelsHidden ? "panels-hidden" : ""}`}
-          style={
-            {
-              "--left-rail-w": `${panelSizes.left}px`,
-              "--right-panel-w": `${panelSizes.right}px`,
-              "--tl-h": `${panelSizes.timeline}px`,
-            } as CSSProperties
-          }
-        >
-          <EditorHeader />
-          <div className="editor-main">
-            {!panelsHidden && (
-              <>
-                <LeftRail />
-                <PanelResizer panel="left" />
-              </>
-            )}
-            <PreviewStage />
-            {!panelsHidden && (
-              <>
-                <PanelResizer panel="right" />
-                <RightPanel />
-              </>
-            )}
-          </div>
-          {!panelsHidden && (
-            <>
-              <PanelResizer panel="timeline" />
-              <Timeline />
-            </>
-          )}
-          <ExportModal />
-          {!edl && (
-            <div className="boot">
-              {loadError ? `Could not load project: ${loadError}` : "Loading project…"}
-            </div>
-          )}
-        </div>
-      )}
+    <div className="app-shell">
+      <Header />
+      <div className="app-main">
+        <LeftRail />
+        {view === "library" ? <LibraryGrid /> : <ReviewMode />}
+      </div>
+      {activeId && <Loupe />}
+      {modal === "settings" && <SettingsModal />}
+      {modal === "export" && <ExportModal />}
+      {modal === "rejects" && <RejectsModal />}
+      {modal === "taste" && <TasteModal />}
       {notice && <Toast notice={notice} onClose={() => setNotice(null)} />}
-    </>
-  );
-}
-
-/**
- * Slim drag handle between panels. Left/right resize widths, timeline resizes
- * height; all are clamped in the store (PANEL_LIMITS) and persisted.
- */
-function PanelResizer({ panel }: { panel: PanelId }): JSX.Element {
-  const setPanelSize = useEditor((s) => s.setPanelSize);
-  const horizontal = panel === "timeline";
-
-  const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startY = e.clientY;
-    const start = useEditor.getState().panelSizes[panel];
-    const el = e.currentTarget;
-    el.classList.add("active");
-    document.body.style.cursor = horizontal ? "row-resize" : "col-resize";
-
-    const onMove = (ev: MouseEvent) => {
-      if (panel === "left") setPanelSize("left", start + (ev.clientX - startX));
-      else if (panel === "right") setPanelSize("right", start - (ev.clientX - startX));
-      else setPanelSize("timeline", start - (ev.clientY - startY));
-    };
-    const onUp = () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      el.classList.remove("active");
-      document.body.style.cursor = "";
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  };
-
-  return (
-    <div
-      className={`panel-resizer ${horizontal ? "horizontal" : "vertical"}`}
-      onMouseDown={onMouseDown}
-      role="separator"
-      aria-orientation={horizontal ? "horizontal" : "vertical"}
-    />
+    </div>
   );
 }
 

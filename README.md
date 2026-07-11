@@ -1,157 +1,96 @@
 # Keeper
 
-> Scaffolded from the Aperture video studio. Docs below describe the inherited stack (Electron + Vite + React, design tokens + UI kit, EDL schema package, engine scripts, Vitest + CI) until Keeper's own docs replace them.
+AI-assisted culling for photos and videos. Dump in an SD card, a phone folder, or two weeks of vacation chaos — Keeper copies everything into a local, date-sorted library, flags the junk with reasons you can check, groups bursts and picks the best frame, lets you search your whole library in plain English, and learns your taste from every call you overrule. When you're done, your keepers flow out to Lightroom, Capture One, or any folder — with your ratings attached.
 
-AI-assisted short-form video studio. Create a project, drop in your clips, write what you want, let it learn your aesthetic, generate a first cut, refine it on a timeline, critique it against your own best posts, auto-improve it, and export a vertical MP4.
+Keeper is **local-first, not local-only**: importing, quality analysis, burst grouping, semantic search, preview, and export all run on your machine. The one optional cloud step is the AI judge (GPT-5.5 by default, provider-configurable), which only ever sees downscaled thumbnails of the borderline items, capped by a budget you set. With no API key, everything still works — you just review the borderline pile yourself.
 
-Aperture is **local-first, not local-only**: your media, editing, transcription, and export all run on your machine, but the AI steps (generate, critique, auto-improve) call a configurable LLM API (OpenAI GPT-5.5 by default). If no model is configured, those steps fall back to fully-offline deterministic versions.
+## The flow
 
-## The end-to-end flow
-
-1. **Home** — a project dashboard. Create a project (name + prompt + platform) or open/delete an existing one (per-card ⋯ menu).
-2. **Input** — upload clips (drag/drop), edit the prompt, attach music, and upload or record a voiceover (auto-transcribed to word-level captions; music ducks under voice).
-3. **Learn aesthetic** (optional) — build a reusable **Style Library**: bulk-import a whole folder of your past videos once, and Aperture distills their palette, grade, pacing, hook, and text treatment into a profile (with a prose style guide + per-reference exemplars). Point any project at a library profile, or learn from a project's own references as an override. Built-in named style presets are also available.
-4. **Generate** — produces a real first cut (hook, reordering, titles, transitions, palette + color grade) conditioned on your prompt and the active style profile. LLM-powered when configured; deterministic baseline otherwise.
-5. **Refine** — a timeline editor with live Remotion preview. Every edit autosaves to `edl.json`; external writes live-reload.
-6. **Critique** — score the cut, calibrated against your own uploaded high-performers ("you vs your best"). LLM critique or instant offline heuristic.
-7. **Auto-improve** — a generate → critique → improve loop that iterates the edit and logs the score trajectory.
-8. **Export** — render a vertical 1080×1920 MP4 locally via Remotion.
+1. **Import** — pick files or a whole folder. Keeper copies (checksum-verified, deduplicated against your whole library) into `library/YYYY/YYYY-MM-DD/`, reads EXIF, and generates thumbnails and previews — including RAW (embedded previews), HEIC, and video posters with hover-scrub strips.
+2. **Auto-cull** — a local pass measures sharpness and exposure, catches black frames, corrupt files, sub-second accidental clips, and screenshots; bursts and near-duplicates are grouped (perceptual hash + capture time) with the sharpest frame suggested as the pick; RAW+JPEG pairs and Live Photos are treated as one photo. Every suggestion carries a reason and a confidence.
+3. **AI review** (optional) — the configured model looks at just the borderline items and judges what heuristics can't: eyes closed, bad framing, or the opposite — a technically imperfect shot of a moment that matters. Your standing rules and past corrections ride along in the prompt.
+4. **Review** — three queues: *sure rejects* (spot-check, confirm in bulk), *sure keeps*, and *needs your eye*. Evidence is attached — a 3× focus crop, the sharper twin side-by-side. Keyboard-first: P/K keep, X/R reject, 0–5 stars, Space for the loupe, arrows to move. Everything is undoable (Cmd+Z).
+5. **Search** — "ocean at sunset", "the kids at dinner" — a local CLIP index answers instantly and offline; month/year words narrow the range. AI captions and tags (when the judge has run) make results explainable.
+6. **Taste** — every override becomes a labeled example: thresholds adapt (keep overriding blur rejects and the blur bar loosens), and recent corrections + your standing rules ("never auto-reject photos of my kids") steer future AI runs. Inspect it all under *Taste profile* — it's just `taste.json` in your library.
+7. **Export** — copy picks to a folder with `.xmp` sidecars (rating, reject flag, keywords) that Lightroom, Capture One, and Bridge read on import — or write sidecars in place and point your editor at the library. RAW twins and Live Photo videos travel with their picks.
+8. **Empty rejects** — the only destructive action in the app: explicit, two-step, shows count and size, and moves originals to the OS Trash (recoverable). The AI can never delete anything.
 
 ## Architecture
 
-Three layers, bridged by one file per project:
+Three layers around one contract:
 
-- **Electron editor** (`app/`) — homepage + timeline UI + live preview (Remotion Player) + export (Remotion renderer).
-- **Node scripts** (`app/scripts/`) — the engine: clip probing/assembly, transcription, frame/style/benchmark analysis, the LLM generate/critique/auto-improve calls, and rendering.
-- **Agent skills** (`.claude/skills/`, `AGENTS.md`) — the richest path: skills run from a Claude/Cursor harness that read/write the same project files.
+- **Electron app** (`app/`) — the library grid, review queues, loupe, search, and settings. The main process owns IPC, a streaming `keeper-asset://` protocol for media, and spawns everything else.
+- **Engine scripts** (`app/scripts/`) — plain Node: the import pipeline (copy → derive → CV → group → embed), the LLM judge, search, export, and CLI tools for agents. A long-lived catalog service brokers SQLite access for the app.
+- **Agent skills** (`.claude/skills/`) — `/cull-shoot`, `/find-media`, `/organize-library`: an agent harness (Claude/Cursor) works the same catalog through the same CLIs, and can actually look at your photos when judgment is needed.
 
-**The contract:** each video is a folder under `projects/<slug>/` whose `edl.json` (validated by the zod schema in `packages/edl`) is the single source of truth. Generators write it; the editor previews/edits/autosaves it; the renderer exports it.
-
-Every "smart" step exists at three tiers and the app picks the best available: deterministic script (offline, free) → single LLM call (cost-predictable) → agent skill (richest).
+**The contract:** the catalog (`.keeper/catalog.db`, SQLite) plus `taste.json`, both validated by the zod schemas in `packages/schema`. Every "smart" step has three tiers — deterministic local pass → single budgeted LLM call → agent skill — and the app uses the best one available.
 
 ```
-aperture/
+keeper/
   app/
     src/                  Electron main + preload + React renderer
-    scripts/              analyze, transcribe, render, extract-frames,
-                          analyze-style, analyze-collection, analyze-benchmarks,
-                          generate-llm, critique-llm, autotune(-llm), llm
-    resources/            app icon, bundled music
-  packages/edl/           Shared EDL + meta/style/benchmark schemas (zod)
-  .claude/skills/         create-social-video, learn-aesthetic,
-                          critique-video, auto-tune
-  projects/<slug>/        meta.json, prompt.md, assets/, edl.json,
-                          style.json, references/, benchmarks/,
-                          benchmarks.json, transcripts/, critique.json, renders/
-  styles/<id>/            Global Style Library (gitignored): profile.json,
-                          style-guide.md, sources/, .frames/
+    scripts/              import, reprocess, judge-llm, export,
+                          query, verdict, catalog-service, llm
+                          + lib/ (catalog, media, quality, phash,
+                            grouping, embeddings, taste, xmp)
+  packages/schema/        Shared zod contracts (assets, verdicts,
+                          groups, taste, imports, judge I/O)
+  .claude/skills/         cull-shoot, find-media, organize-library
   AGENTS.md               Agent operating manual
 ```
 
-## Style Library
+## Where your media lives
 
-Rather than re-uploading references per project, build a creator-level look once and reuse it everywhere (Style tab):
+The library is **user data, never the repo**: `~/Pictures/Keeper` by default (change it in Settings; dev override `KEEPER_LIBRARY_DIR`).
 
-- **Bulk import** a whole folder (or multi-select) via a native picker.
-- **Analyze once** — samples frames and computes editing metrics, then (with a model configured) distills a prose style guide + per-reference exemplars the generator imitates in-context. Without a model it still writes a solid deterministic profile.
-- **Reuse** — a project points at a library profile via `meta.styleProfileId`; a project's own `references/` override the library when present.
-- **Faithful generation** — generation injects the style guide + top exemplars and then deterministically stamps the measurable look (palette, font, caption style, and a light color grade rendered as a CSS filter on your clips).
-
-Scope note: this matches edit structure, captions, text, transitions, palette, and a light grade — not footage transformation (no LUT/effects/AI restyle of the source pixels).
+```
+~/Pictures/Keeper/
+  library/2026/2026-07-04/   your originals, immutable, date-sorted
+  .keeper/                   catalog.db, thumbs, previews, models
+  taste.json                 your learned culling profile
+```
 
 ## AI configuration
 
-The AI steps use the Vercel AI SDK behind a provider-agnostic layer (`app/scripts/llm.mjs`). Configure it with a local, gitignored env file — copy `app/.env.local.example` to `app/.env.local`:
+The judge and search enrichment use the Vercel AI SDK behind a provider-agnostic layer (`app/scripts/llm.mjs`). Add a key in **Settings → AI**, or copy `app/.env.local.example` to `app/.env.local`:
 
 ```bash
-# app/.env.local  (default: OpenAI GPT-5.5)
 OPENAI_API_KEY=sk-...
 ```
-
-The main process loads this at startup, so spawned scripts inherit it (no shell exporting needed). Restart `npm run dev` after changing it.
 
 Escape hatch — rotate models/providers with no code change:
 
 ```bash
-APERTURE_LLM_PROVIDER=openai            # openai | anthropic | openai-compatible
-APERTURE_LLM_MODEL=gpt-5.5
-APERTURE_LLM_BASE_URL=                  # e.g. http://localhost:11434/v1 for a self-hosted model
-APERTURE_LLM_API_KEY=                   # generic; overrides the provider-specific key
+KEEPER_LLM_PROVIDER=openai            # openai | anthropic | openai-compatible
+KEEPER_LLM_MODEL=gpt-5.5
+KEEPER_LLM_BASE_URL=                  # e.g. http://localhost:11434/v1 for a local model
+KEEPER_LLM_API_KEY=                   # generic; overrides the provider-specific key
 ```
 
-With no key set, Generate falls back to the deterministic baseline assembly and the Critique panel uses the offline heuristic; Auto-improve uses the deterministic fix loop.
-
-### Voiceover (ElevenLabs)
-
-Generated voiceovers (left rail → Audio → Generate voiceover) and in-app voice cloning use ElevenLabs. Add a key to the same env file (or paste it under Settings → Voices — the env var wins when both are set):
-
-```bash
-ELEVENLABS_API_KEY=sk_...
-```
-
-When creating the key in the ElevenLabs dashboard, scope it minimally — Aperture only needs:
-
-| Scope | Level | Used for |
-| --- | --- | --- |
-| Text to Speech | Access | Narration synthesis (also returns the word timings used for captions) |
-| Voices | Read | Listing your voices in the picker |
-| Voices | Write | Only if you clone/delete voices in-app |
-
-Everything else (Dubbing, Projects, Voice Generation, Forced Alignment, Speech to Text, …) can stay on No Access. Voice *cloning* requires a paid ElevenLabs plan and the consent of the person being cloned; without a key, recorded voiceovers and whisper captions still work fully offline.
+Env vars always win over Settings (the UI shows locked fields).
 
 ### What leaves your machine
 
-Generation, critique, and auto-improve send **text** — the `edl.json` edit plan, your `prompt.md`, the resolved style profile, and benchmark feature stats — never your clips. The one exception is **Style Library analysis**, which sends *sampled still frames* of your reference videos to the model (once per profile) so it can see the aesthetic; your source video/audio files themselves are never uploaded. Clip probing, frame sampling, transcription (whisper.cpp), preview, and export all run locally. With no model configured, nothing leaves your machine.
+With no key configured: **nothing**. With a key: only downscaled thumbnails of the borderline items the judge analyzes (capped by *AI budget per run*), plus your standing rules and recent corrections as text. Originals, previews, embeddings, and quality metrics never leave your machine. The CLIP search model (~100 MB) downloads once into `.keeper/models/` and runs offline thereafter.
 
-## Where your work is stored
+## RAW / HEIC / video notes
 
-Projects and the style library are **user data**, not part of the repo. By default they live in **`~/Documents/Aperture/`** (`projects/` and `styles/`), so they're never committed or bundled into the app. You can change the location in Settings (gear icon → Projects folder); a restart applies it. Dev overrides: `APERTURE_HOME` (root), `REEL_PROJECTS_DIR`, `APERTURE_STYLES_DIR`. A sample project for development lives in `fixtures/sample-project/`.
+- RAW support in v1 means metadata + the embedded JPEG preview (fast, no demosaic); the RAW file itself is treated as the sidecar of its JPEG twin when both exist, and always travels with exports.
+- HEIC decodes via `sips` on macOS (ffmpeg fallback elsewhere); Live Photos (HEIC+MOV) are paired into one logical photo.
+- Videos are first-class in the pipeline: posters, scrub strips, junk detection (sub-second misfires, screen recordings), embedding of the poster frame for search, and playback in the loupe.
 
 ## Develop
 
 ```bash
-npm install        # install workspaces
-npm run dev        # launch the Electron editor (electron-vite)
+npm install        # workspaces (Node >= 22.13 required — node:sqlite)
+npm run dev        # launch the Electron app (electron-vite)
 npm run typecheck  # type-check all workspaces
+npm test           # vitest (schema, pipeline libs, catalog, renderer store)
 npm run build      # production build
 ```
 
+Engine scripts run standalone too — see `AGENTS.md` for the CLI surface (`import.mjs`, `query.mjs`, `verdict.mjs`, …).
+
 ## Status
 
-V1. The full creator pipeline (homepage → input → aesthetic learning → generate → refine → benchmark critique → auto-improve → export) is implemented, with deterministic offline fallbacks and an LLM path for generation, critique, and auto-improvement.
-
-## Changelog
-
-This project is pre-release; all notable changes are grouped below until we start tagging versions. Newest first.
-
-### Unreleased
-
-**Style Library + faithful generation**
-- Global, reusable **Style Library** (`styles/<id>/`): bulk-import a folder (native picker), analyze once, reuse across projects; per-project `references/` still override.
-- Rich multimodal style capture (`analyze-collection.mjs`): frame sampling + editing metrics distilled by the LLM into a prose style guide + per-reference exemplars (with a deterministic fallback).
-- Style-faithful generation: `generate-llm.mjs` injects the style guide + top exemplars and deterministically stamps palette, font, caption style, and color grade.
-- Color grade: `theme.grade` (brightness/contrast/saturation/temperature/vignette) rendered as a CSS filter on clips in preview and export.
-
-**LLM everywhere (with offline fallbacks)**
-- Provider-agnostic LLM layer on the Vercel AI SDK (`llm.mjs`), default OpenAI GPT-5.5, env-configurable provider/model/base-URL.
-- LLM-backed **Generate** (`generate-llm.mjs`), **Critique** (`critique-llm.mjs`), and **Auto-improve** (`autotune-llm.mjs`, a critique-in-the-loop optimizer), each falling back to deterministic scripts when no model is set.
-- Local, gitignored `app/.env.local` loading at startup; graceful, surfaced errors (toasts) instead of silent fallback.
-
-**Creator pipeline (front + back of the journey)**
-- Project **homepage/dashboard**: create, open, delete (per-card ⋯ menu), thumbnails, view routing.
-- **Creator input**: clip upload (drag/drop), editable prompt (`prompt.md`), attach music (upload + bundled library), voiceover upload or in-app recording with auto-transcribed captions and music ducking under voice.
-- **Aesthetic learning** (per-project) + named visual-style presets.
-- **Benchmark-aware critique**: upload your high-performers, analyze features, and score "you vs your best".
-
-**Editor & platform**
-- `edl.json` autosave + file-watch live reload (editor ↔ agent round-trip).
-- Root React error boundary (no more blank-screen crashes); empty-project preview placeholder.
-- Light/dark theme toggle (system-aware, persisted).
-- Rebrand **Reel Studio → Aperture**: window title, macOS app/dock name, app icon, and docs.
-
-**EDL package**
-- New `meta`, `style`, and `benchmark` zod schemas; audio-clip `role` (music/voiceover/sfx); `theme.stylePreset` and `theme.grade`.
-- Fixed the ESM build so the schema imports cleanly from Node scripts.
-
-### Initial commit
-- Scaffold: Electron + Vite + React editor, shared `packages/edl` schema, Remotion preview/export spine, and the `create-social-video` / `critique-video` Claude Code skills.
+V1. The full loop — import → auto-cull → AI review → human review → taste learning → search → export/XMP → trash-with-consent — is implemented, with the AI tier optional and budgeted, and offline deterministic behavior as the baseline.

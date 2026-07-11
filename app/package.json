@@ -1,7 +1,7 @@
 {
   "name": "keeper-app",
   "version": "0.1.0",
-  "description": "Keeper Electron editor.",
+  "description": "Keeper Electron app — AI-assisted culling for photos and videos.",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -13,20 +13,13 @@
     "@ai-sdk/anthropic": "^4.0.4",
     "@ai-sdk/openai": "^4.0.4",
     "@ai-sdk/openai-compatible": "^3.0.2",
-    "@reel/edl": "0.1.0",
-    "@remotion/bundler": "^4.0.0",
-    "@remotion/install-whisper-cpp": "^4.0.0",
-    "@remotion/media-parser": "^4.0.0",
-    "@remotion/player": "^4.0.0",
-    "@remotion/renderer": "^4.0.0",
-    "@remotion/transitions": "^4.0.0",
+    "@huggingface/transformers": "^3.5.1",
+    "@keeper/schema": "0.1.0",
     "ai": "^7.0.9",
+    "exiftool-vendored": "^30.0.0",
     "ffmpeg-static": "^5.2.0",
-    "img-fx": "^0.4.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "remotion": "^4.0.0",
-    "three": "^0.185.1",
     "zustand": "^5.0.2"
   },
   "devDependencies": {

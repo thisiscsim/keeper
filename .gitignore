@@ -4,13 +4,14 @@ dist/
 .DS_Store
 *.log
 
-# User data lives in ~/Documents/Aperture (configurable), never in the repo.
-# Any local projects/ or styles/ (e.g. from a dev APERTURE_HOME override) are ignored.
-# The tracked sample project lives in fixtures/sample-project instead.
-# NOTE: root-anchored — an unanchored "styles/" also matched
-# app/src/renderer/src/styles/ and silently kept the design system untracked.
-/projects/
-/styles/
+# User data (the media library) lives in ~/Pictures/Keeper (configurable),
+# never in the repo. A local library/ from a dev KEEPER_LIBRARY_DIR override
+# pointed at the repo is ignored too.
+# NOTE: root-anchored — an unanchored pattern would also match
+# app/src/renderer/src/styles/ and silently untrack the design system.
+/library/
+/.keeper/
+/taste.json
 
 .env
 .env.local

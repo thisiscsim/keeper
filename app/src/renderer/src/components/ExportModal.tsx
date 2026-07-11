@@ -1,70 +1,109 @@
-import { useEditor } from "../store";
-import { useEscapeKey } from "./ui/useEscapeKey";
+import { useState } from "react";
+import { Button, Field, Modal } from "./ui";
+import { useKeeper } from "../store";
 
-const PHASE_LABELS: Record<string, string> = {
-  preparing: "Preparing renderer…",
-  bundling: "Bundling composition…",
-  composition: "Resolving composition…",
-  rendering: "Rendering frames…",
-};
+/**
+ * Export selects: copy picks (or the current selection) to a folder with XMP
+ * sidecars Lightroom/Capture One read natively, or write sidecars in place.
+ */
+export function ExportModal(): JSX.Element {
+  const setModal = useKeeper((s) => s.setModal);
+  const selected = useKeeper((s) => s.selected);
+  const summary = useKeeper((s) => s.summary);
+  const setNotice = useKeeper((s) => s.setNotice);
+  const exportTask = useKeeper((s) => s.tasks.export);
+  const setTask = useKeeper((s) => s.setTask);
 
-export function ExportModal(): JSX.Element | null {
-  const exporting = useEditor((s) => s.exporting);
-  const progress = useEditor((s) => s.exportProgress);
-  const phase = useEditor((s) => s.exportPhase);
-  const result = useEditor((s) => s.exportResult);
-  const close = useEditor((s) => s.closeExport);
+  const [scope, setScope] = useState<"picks" | "selection">(selected.size > 0 ? "selection" : "picks");
+  const [xmp, setXmp] = useState(true);
+  const [running, setRunning] = useState(false);
 
-  // Escape dismisses only once a result is shown — an in-flight export is not
-  // cancellable from this modal, so it must not be dismissable mid-render.
-  useEscapeKey(result ? close : null);
+  const picksCount = summary?.counts.picks ?? 0;
+  const count = scope === "selection" ? selected.size : picksCount;
 
-  if (!exporting && !result) return null;
+  const run = async (inPlace: boolean) => {
+    let dest: string | undefined;
+    if (!inPlace) {
+      const picked = await window.api?.pickExportDest();
+      if (!picked?.ok || picked.canceled || !picked.dest) return;
+      dest = picked.dest;
+    }
+    setRunning(true);
+    setTask("export", { running: true, phase: "starting", progress: 0 });
+    const result = await window.api?.runExport({
+      dest,
+      inPlace,
+      xmp,
+      ids: scope === "selection" ? [...selected] : undefined,
+    });
+    setTask("export", { running: false, phase: "", progress: 0 });
+    setRunning(false);
+    if (result?.ok) {
+      let text = "Export finished.";
+      try {
+        const stats = JSON.parse(result.output ?? "{}");
+        text = inPlace
+          ? `Wrote ${stats.sidecars ?? 0} XMP sidecars into the library.`
+          : `Exported ${stats.exported ?? 0} files${stats.sidecars ? ` + ${stats.sidecars} sidecars` : ""}.`;
+      } catch {
+        // banner is best-effort
+      }
+      setNotice({ kind: "info", text });
+      if (dest) void window.api?.openExportDest(dest);
+      setModal(null);
+    } else {
+      setNotice({ kind: "error", text: result?.error ?? "Export failed" });
+    }
+  };
 
   return (
-    <div className="modal-overlay">
-      <div className="modal">
-        {exporting && (
-          <>
-            <div className="modal-title">Exporting video</div>
-            <div className="modal-phase">{PHASE_LABELS[phase] ?? "Working…"}</div>
-            <div className="bar lg">
-              <div className="bar-fill" style={{ width: `${progress}%` }} />
-            </div>
-            <div className="muted small">{progress}%</div>
-          </>
-        )}
-
-        {result?.ok && (
-          <>
-            <div className="modal-title">Export complete</div>
-            <div className="muted small break">{result.output}</div>
-            <div className="modal-actions">
-              <button className="btn" onClick={close}>
-                Close
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={() => result.output && window.api.revealItem(result.output)}
-              >
-                Reveal in Finder
-              </button>
-            </div>
-          </>
-        )}
-
-        {result && !result.ok && (
-          <>
-            <div className="modal-title">Export failed</div>
-            <div className="muted small break">{result.error}</div>
-            <div className="modal-actions">
-              <button className="btn" onClick={close}>
-                Close
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+    <Modal
+      title="Export selects"
+      onClose={() => !running && setModal(null)}
+      width={440}
+      footer={
+        <>
+          <Button variant="ghost" onClick={() => setModal(null)} disabled={running}>
+            Cancel
+          </Button>
+          <Button variant="secondary" onClick={() => void run(true)} disabled={running || count === 0}>
+            Write XMP in place
+          </Button>
+          <Button variant="primary" onClick={() => void run(false)} disabled={running || count === 0}>
+            {running ? exportTask.phase || "Exporting…" : `Export ${count.toLocaleString()} to folder…`}
+          </Button>
+        </>
+      }
+    >
+      <Field label="What to export">
+        <div className="radio-row">
+          <label className="radio-option">
+            <input type="radio" checked={scope === "picks"} onChange={() => setScope("picks")} />
+            All picks ({picksCount.toLocaleString()})
+          </label>
+          <label className="radio-option">
+            <input
+              type="radio"
+              checked={scope === "selection"}
+              onChange={() => setScope("selection")}
+              disabled={selected.size === 0}
+            />
+            Current selection ({selected.size.toLocaleString()})
+          </label>
+        </div>
+      </Field>
+      <Field label="Metadata">
+        <label className="radio-option">
+          <input type="checkbox" checked={xmp} onChange={(e) => setXmp(e.target.checked)} />
+          Write .xmp sidecars (ratings, flags, keywords — read by Lightroom, Capture One, Bridge)
+        </label>
+      </Field>
+      <p className="modal-hint">
+        RAW originals travel with their JPEG twins, and Live Photos bring their video halves. “Write XMP in
+        place” adds sidecars next to the originals inside your library instead of copying — point Lightroom at
+        the library folder (or an Aperture project's assets folder as the export target) and your verdicts come
+        along.
+      </p>
+    </Modal>
   );
 }

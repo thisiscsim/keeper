@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Aperture are documented here. The format is based on
+All notable changes to Keeper are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project is
 pre-release, so everything lives under "Unreleased" until we start tagging
 versions.
@@ -9,75 +9,66 @@ versions.
 
 ### Added
 
-- **Editor redesign (Figma V0, 4 phases)** — new shell (header with centered
-  filename, undo/redo, presets dropdown, export; left input rail with prompt +
-  generate, clips and audio upload/record; floating device preview; pill-tab
-  right panel), a combined Inspector (Design: alignment/padding/typography/
-  palette/captions; Format: fps, aspect ratio, resolution; Back-headed clip
-  subflows for text/video/audio), Style tab with reference modes
-  (literal/inspired) and read-only style guide, Critique tab with score card +
-  detail subflow and Auto-improve, timeline rework (dynamic renamable layers,
-  music/voiceover split tracks, Layer button, transport bar with Space
-  play/pause, action-token chips, text-sketch and click-to-add empty lanes,
-  drag assets from the rail), EDL undo/redo history (Cmd+Z / Shift+Cmd+Z) and
-  a tabbed Settings modal (General / Export / Agent). Schema gains
-  `theme.textAlignment`, `styleProfile.referenceMode`, and optional track
-  `name`; generation prompts are format-aware.
-
-- **Visual language refactor (Home + New Project dialog)** — new design-token
-  system (`styles/tokens.css`, light authoritative + derived dark), Bradford
-  brand font scaffolding with SF Pro as the UI stack, a custom icon set
-  harvested from Figma (38 SVGs, `currentColor`-normalized) behind a typed
-  `Icon` component, componentized UI primitives (`Button`, `IconButton`,
-  `Badge`, `Modal`, `Field`/`Input`/`TextArea`/`Select`), a Figma-faithful Home
-  page (header, welcome hero, 240x300 project cards with status badges +
-  relative time, dashed new-project card) and restyled New Project dialog. The
-  editor is retinted onto the new tokens pending its own redesign.
-
-- **Testing foundation** — Vitest with two projects (Node for `packages/edl` +
-  `app/scripts`, jsdom for the renderer), covering the EDL schema, the
-  `sanitizeEdl`/`enforceStyle`/`metrics` helpers, critique scoring, EDL edits,
-  text animations, the store (autosave/routing/theme), and a `LeftPanel` render
-  regression guard for the rules-of-hooks crash. `npm test` / `npm run test:watch`.
-- **CI** — GitHub Actions workflow running `npm ci`, build, typecheck, and tests
-  on every pull request and push to `main`.
-- **Repo hygiene** — this changelog and a pull request template.
-- **Style Library** — a reusable, creator-level look: bulk-import a folder of
-  reference videos (native picker), analyze once (`analyze-collection.mjs`,
-  GPT-5.5 vision distills a style guide + per-reference exemplars, with a
-  deterministic fallback), and reuse across projects; per-project `references/`
-  override when present.
-- **Color grade** — `theme.grade` (brightness/contrast/saturation/temperature/
-  vignette) rendered as a CSS filter on clips in preview and export.
-- **LLM everywhere** — provider-agnostic layer (Vercel AI SDK, default OpenAI
-  GPT-5.5, env-configurable) powering Generate, Critique, and Auto-improve, each
-  with an offline deterministic fallback. Local, gitignored `app/.env.local`.
-- **Creator pipeline** — project homepage (create/open/delete, thumbnails),
-  clip upload, editable prompt, music attach + bundled library, voiceover
-  upload/record with auto-transcribed captions and music ducking, per-project
-  aesthetic learning, named style presets, and benchmark-aware critique.
-- **Editor/platform** — `edl.json` autosave + file-watch live reload, light/dark
-  theme, root error boundary, and toasts.
+- **Keeper v1 — AI-assisted culling for photos and videos.** The repo pivots
+  from the inherited Aperture video-studio scaffold to a media-culling app:
+  - **Library**: one date-sorted local library (`~/Pictures/Keeper` by
+    default); imports copy in checksummed + deduplicated, with EXIF via
+    exiftool, thumbnails/previews for JPEG/PNG/HEIC/RAW (embedded preview),
+    and posters + hover-scrub strips for video.
+  - **Auto-cull pipeline**: local blur/exposure/black-frame/corrupt/accidental
+    -clip/screenshot detection (ffmpeg-piped grayscale + pure-JS math), burst
+    and near-duplicate grouping (pHash + capture time) with best-frame picks,
+    RAW+JPEG and Live Photo pairing — every suggestion with reasons and
+    confidence, checkpointed and resumable.
+  - **Review mode**: three confidence queues (sure rejects / sure keeps /
+    needs your eye) with evidence (3x focus crop, sharper-twin comparison),
+    bulk confirm, keyboard-first culling (P/X/U, 0–5 stars, Space loupe),
+    and full undo/redo.
+  - **Natural-language search**: local CLIP embeddings (transformers.js /
+    onnxruntime, model cached in the library), instant offline cosine search
+    with date-word narrowing; metadata fallback before the index is built.
+  - **LLM judge** (optional): budgeted, batched GPT-5.5 vision over borderline
+    items only — downscaled thumbnails, repaired-then-validated output,
+    captions + tags, burst best-pick refinement; provider-agnostic via
+    `KEEPER_LLM_*` env or Settings.
+  - **Taste profile**: overrides become exemplars + threshold tuning in
+    `taste.json`; standing rules injected into every AI run; fully
+    user-inspectable in the app.
+  - **Export/interop**: copy picks (with RAW/Live siblings) to a folder with
+    Lightroom-readable `.xmp` sidecars, or write sidecars in place; reveal in
+    Finder; two-step "empty rejects" that only ever moves originals to the OS
+    Trash.
+  - **Agent tier**: `/cull-shoot`, `/find-media`, `/organize-library` skills +
+    JSON CLIs (`query.mjs`, `verdict.mjs`) that read/write the same catalog
+    with the same taste feedback.
+- **Catalog**: SQLite (`node:sqlite`, no native build step) at
+  `.keeper/catalog.db`, brokered to the app by a spawned catalog service
+  (line-delimited JSON-RPC) so the Electron main process stays DB-free; all
+  rows validated against the new `@keeper/schema` zod contracts on read and
+  write.
 
 ### Changed
 
-- Rebranded **Reel Studio -> Aperture** (window title, macOS app/dock name, icon,
-  docs).
-- Generation is style-faithful: injects the style guide + top exemplars and
-  deterministically stamps palette/font/captions/grade.
-- EDL package: added `meta`, `style`, and `benchmark` schemas; audio-clip `role`;
-  `theme.stylePreset` and `theme.grade`; fixed the ESM build so the schema
-  imports cleanly from Node scripts.
+- `packages/edl` (`@reel/edl`) is now `packages/schema` (`@keeper/schema`):
+  asset records, verdicts, groups, taste profile, import manifests, search and
+  judge I/O — same hostile-input discipline (bounded numerics, confined
+  relative paths, capped collections).
+- Electron main process rebuilt around the library: `keeper-asset://` byte-range
+  streaming protocol, stamp-file watcher for agent live-refresh, `KEEPER_*`
+  env names, settings (library location, AI budget, auto-judge, hardware
+  decode).
+- Renderer rebuilt on the same design tokens + UI kit: date-sectioned lazy
+  grid, loupe with burst strip, review queues, search, taste/export/rejects/
+  settings modals; zustand store with optimistic verdicts and undo history.
 
-### Fixed
+### Removed
 
-- Rules-of-hooks crash that blanked the editor when a project loaded.
-- Generation silently falling back to the baseline when the model omitted a
-  required `anim.name` (now repaired by `sanitizeEdl`).
-- Reasoning-model incompatibility (dropped unsupported `temperature`).
+- The video-editor surface area: Remotion preview/export, the timeline editor,
+  EDL schema and engine scripts (generate/critique/autotune/transcribe/TTS),
+  style library, ElevenLabs integration, and the bundled music resources.
 
 ## [0.1.0] - Initial commit
 
-- Scaffold: Electron + Vite + React editor, shared `packages/edl` schema,
-  Remotion preview/export spine, and the `create-social-video` /
-  `critique-video` Claude Code skills.
+- Scaffolded from the Aperture video studio (Electron + Vite + React editor,
+  shared schema package, engine-script + skills architecture, design tokens,
+  Vitest + CI).

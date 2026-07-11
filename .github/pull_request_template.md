@@ -18,6 +18,7 @@
 
 ## Checklist
 
-- [ ] Any `edl.json` produced still validates against `EdlSchema`
+- [ ] Catalog rows / taste.json still validate against `@keeper/schema` (hostile-input tests updated if the schema changed)
 - [ ] No secrets committed (`app/.env.local`, keys) and no large/uploaded media
 - [ ] `CHANGELOG.md` updated under "Unreleased" if user-facing
+- [ ] Called out if the change needs a `npm run dev` restart (main/preload/engine scripts)

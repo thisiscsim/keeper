@@ -1,50 +1,38 @@
 # Keeper
 
-> NOTE: scaffolded from Aperture — the conventions below describe the inherited codebase; update as Keeper diverges.
-
-AI-assisted short-form video studio. You (the agent) turn a prompt + raw clips into a finished vertical social video by writing a declarative timeline (`edl.json`), which a local Electron editor previews and exports via Remotion.
+AI-assisted culling for photos and videos. The user dumps an SD card / phone folder in; Keeper copies it into a local library, flags the junk with explainable verdicts, groups bursts, indexes everything for natural-language search, and learns the user's taste from every override. You (the agent) are the richest tier of that pipeline: you can see images, so you can judge what heuristics can't.
 
 ## How it works
 
-The full creator journey (front to back):
+1. **Import** — `import.mjs` copies files into `<home>/library/YYYY/YYYY-MM-DD/` (SHA-256 checksummed, deduped against the whole library), reads EXIF via exiftool, generates thumbnails/previews (RAW via embedded preview, HEIC via sips, videos get posters + scrub strips), measures quality (blur/exposure via ffmpeg-piped grayscale + pure-JS math), suggests verdicts, clusters bursts (pHash + capture time), pairs RAW+JPEG / Live Photos, and embeds everything with local CLIP for search.
+2. **Review** — the Electron app shows three confidence queues (sure rejects / sure keeps / needs your eye) with reason chips and evidence; the user (or you) confirms or overrides. User verdicts are separate from AI suggestions; the AI never decides destructively.
+3. **Learn** — every override of an AI suggestion becomes an exemplar in `taste.json` (+ threshold tuning); standing rules and recent corrections are injected into future LLM judgments.
+4. **Search** — CLIP embeddings, fully local; the LLM judge adds captions/tags for borderline items when configured.
+5. **Export** — picks copy out with `.xmp` sidecars (rating/flag/keywords) that Lightroom/Capture One/Bridge read natively; rejected originals are only ever moved to the OS trash after explicit user confirmation.
 
-1. The user opens the editor on a project **homepage** and creates a project under `projects/<slug>/` (scaffolds `meta.json`, `prompt.md`, an empty `edl.json`, and `assets/ references/ benchmarks/ transcripts/ renders/`).
-2. In the editor they provide input: upload clips into `assets/`, write intent in `prompt.md`, attach music, and add or record a voiceover (which auto-transcribes to word-level captions).
-3. Optionally they teach the agent their look: upload their own past videos into `references/` and run aesthetic learning, which writes a reusable `style.json` profile (+ `aesthetic.md`).
-4. You generate the first cut by writing `projects/<slug>/edl.json` — the single source of truth — conditioned on `prompt.md` and `style.json`.
-5. The Electron editor live-previews `edl.json` and live-reloads it when you (or the user) change it. The user refines on the timeline; their edits autosave back to `edl.json`.
-6. You critique the cut into `critique.json`, calibrated against the creator's own high-performers in `benchmarks.json` when present. The `auto-tune` loop iterates generate -> critique -> fix, logging `results.tsv`.
+## The contract
 
-## The contract: edl.json (+ sidecar files)
-
-`edl.json` is validated by the zod schema in `packages/edl` (`packages/edl/src/schema.ts`). Never write an `edl.json` that fails `EdlSchema`.
-
-Shape: `format` (vertical 1080x1920, fps), `theme` (font, palette, captionStyle, safeMargins, optional `stylePreset`), `assets[]`, `tracks[]` where each track is `video | text | caption | audio`. Audio clips carry a `role` (`music | voiceover | sfx`); music with `duckUnderVoice` is attenuated under voiceover.
-
-Per-project sidecar files (each has its own schema + `parse*` helper in `packages/edl`):
-
-- `meta.json` (`MetaSchema`) — title, platform, status, `styleProfileId`.
-- `style.json` (`StyleProfileSchema`) — learned/selected aesthetic: palette, font, captions, pacing, hook, energy, do/avoid.
-- `benchmarks.json` (`BenchmarksSchema`) — feature distribution of the creator's high-performers, for benchmark-relative critique.
+- **Catalog**: `<home>/.keeper/catalog.db` (SQLite). All access goes through `app/scripts/lib/catalog.mjs`; every row is validated against the zod schemas in `packages/schema` on read and write. Never write the DB directly.
+- **Taste**: `<home>/taste.json` (`TasteProfileSchema`) — thresholds, standing rules, exemplars, override stats.
+- Library home: `KEEPER_LIBRARY_DIR` env, else `~/Pictures/Keeper`. CLI writes touch `<home>/.keeper/.stamp`, which live-refreshes the running app.
 
 ## Skills
 
-- `/create-social-video <slug>` — analyze clips + prompt (+ `style.json`), write `edl.json` (first cut).
-- `/learn-aesthetic <slug>` — study the creator's `references/`, write `style.json` + `aesthetic.md`.
-- `/critique-video <slug>` — score the cut (vs `benchmarks.json` when present), write `critique.json`.
-- `/auto-tune <slug>` — loop generate/adjust -> critique -> fix, logging `results.tsv`.
+- `/cull-shoot` — import + confirm/override verdicts + resolve bursts, visually.
+- `/find-media` — semantic search + visual verification of a half-remembered shot.
+- `/organize-library` — captions/tags/events, dedupe report, library health.
 
-## Helper scripts (`app/scripts/`)
+## CLI surface (`app/scripts/`)
 
-`analyze.mjs` (baseline assembly), `transcribe.mjs` (captions, prefers the voiceover clip), `render.mjs` (export), `extract-frames.mjs` + `analyze-style.mjs` (aesthetic baseline), `analyze-benchmarks.mjs` (benchmark features), `autotune.mjs` (deterministic auto-improve).
+`import.mjs` (full pipeline), `reprocess.mjs` (resume/re-run stages), `query.mjs` (counts / lists / review queues / semantic search — JSON out), `verdict.mjs` (set flags/ratings/group picks — records taste like the app), `judge-llm.mjs` (budgeted GPT-5.5 vision pass over borderline items), `export.mjs` (copy + XMP sidecars), `catalog-service.mjs` (the app's own DB broker — not for direct use).
 
 ## Scoped conventions
 
-Area-specific rules live in `.cursor/rules/` (IPC/main-process, renderer design system, engine scripts, EDL schema, delivery workflow). They activate by file glob in Cursor; other agents should skim the relevant file before working in that area.
+Area rules live in `.cursor/rules/` (IPC/main process, renderer design system, engine scripts, schema package, delivery workflow). They activate by file glob in Cursor; other agents should skim the relevant file before working in that area.
 
 ## Boundaries
 
-- Generated artifacts live under `projects/<slug>/`. In the app these resolve to the user's Aperture home (`~/Documents/Aperture/projects/`, configurable); the scripts honor `APERTURE_PROJECTS_DIR` and fall back to the repo's `projects/` in dev. Don't write outside a project folder except code changes you were explicitly asked to make.
-- Vertical 1080x1920 @ 30fps is the default format.
-- Keep the design system lightweight: font, palette, caption style, simple overlays — all driven by `theme`. Don't hardcode styling that belongs in `theme`.
-- Only reference assets that actually exist in the project's `assets/` and are listed in `edl.assets`.
+- **Never delete, move, or rewrite media files.** Verdicts are flags. The only deletion path is the app's user-confirmed "empty rejects" (OS trash).
+- Media stays local. The LLM judge sends downscaled thumbnails only, capped by an explicit budget; embeddings and quality metrics never leave the machine.
+- Requires Node >= 22.13 (`node:sqlite`). Scripts are spawned with the system `node`.
+- Don't write outside the library home except code changes you were explicitly asked to make.
