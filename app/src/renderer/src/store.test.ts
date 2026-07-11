@@ -1,114 +1,134 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { parseEdl } from "@reel/edl";
-import { useEditor } from "./store";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AssetRecord } from "@keeper/schema";
+import { useKeeper } from "./store";
 
-const edl = parseEdl({ tracks: [{ id: "v", type: "video", clips: [] }] }).edl!;
+function asset(id: string, extra: Partial<AssetRecord> = {}): AssetRecord {
+  return {
+    id,
+    relPath: `library/2026/2026-07-04/${id}.jpg`,
+    fileName: `${id}.jpg`,
+    byteSize: 1000,
+    contentHash: `hash-${id}`,
+    mediaType: "photo",
+    format: "jpeg",
+    dateSource: "exif",
+    exif: {},
+    pairRole: "primary",
+    offline: false,
+    quality: {},
+    user: { flag: "unrated", rating: 0 },
+    tags: [],
+    stages: {},
+    ...extra,
+  } as AssetRecord;
+}
+
+function seed(assets: AssetRecord[]): void {
+  useKeeper.setState({
+    records: new Map(assets.map((a) => [a.id, a])),
+    days: [{ day: "2026-07-04", count: assets.length }],
+    dayIds: { "2026-07-04": assets.map((a) => a.id) },
+    undoPast: [],
+    undoFuture: [],
+    selected: new Set(),
+    anchorId: null,
+    activeId: null,
+    searchResults: null,
+    searchQuery: "",
+  });
+}
 
 beforeEach(() => {
+  seed([asset("a"), asset("b"), asset("c")]);
   vi.clearAllMocks();
-  useEditor.setState({ view: "home", slug: null, edl: null });
-});
-afterEach(() => {
-  vi.useRealTimers();
 });
 
-describe("view routing", () => {
-  it("openProject enters the editor; goHome returns home", () => {
-    useEditor.getState().openProject("demo");
-    expect(useEditor.getState()).toMatchObject({ view: "editor", slug: "demo" });
-    useEditor.getState().goHome();
-    expect(useEditor.getState().view).toBe("home");
+describe("selection", () => {
+  it("selects single, toggles with meta, ranges with shift", () => {
+    const s = useKeeper.getState();
+    s.select("a");
+    expect([...useKeeper.getState().selected]).toEqual(["a"]);
+    useKeeper.getState().select("c", { shift: true });
+    expect([...useKeeper.getState().selected].sort()).toEqual(["a", "b", "c"]);
+    useKeeper.getState().select("b", { toggle: true });
+    expect(useKeeper.getState().selected.has("b")).toBe(false);
+  });
+
+  it("selectionOr prefers explicit id, then selection, then loupe", () => {
+    useKeeper.getState().select("a");
+    expect(useKeeper.getState().selectionOr("b")).toEqual(["b"]);
+    expect(useKeeper.getState().selectionOr(null)).toEqual(["a"]);
+    useKeeper.getState().clearSelection();
+    useKeeper.getState().openLoupe("c");
+    expect(useKeeper.getState().selectionOr(null)).toEqual(["c"]);
+  });
+});
+
+describe("verdicts + undo", () => {
+  it("applies optimistically and records an undo entry", async () => {
+    await useKeeper.getState().setVerdict(["a", "b"], { flag: "reject" });
+    expect(useKeeper.getState().records.get("a")?.user.flag).toBe("reject");
+    expect(useKeeper.getState().records.get("b")?.user.flag).toBe("reject");
+    expect(useKeeper.getState().undoPast).toHaveLength(1);
+    expect(window.api.setVerdict).toHaveBeenCalledWith({ ids: ["a", "b"], flag: "reject", rating: undefined });
+  });
+
+  it("undo restores prior state and enables redo", async () => {
+    await useKeeper.getState().setVerdict(["a"], { flag: "pick" });
+    await useKeeper.getState().undo();
+    expect(useKeeper.getState().records.get("a")?.user.flag).toBe("unrated");
+    expect(useKeeper.getState().undoFuture).toHaveLength(1);
+    expect(window.api.restoreVerdicts).toHaveBeenCalled();
+    await useKeeper.getState().redo();
+    expect(useKeeper.getState().records.get("a")?.user.flag).toBe("pick");
+  });
+
+  it("reverts the optimistic update when the write fails", async () => {
+    vi.mocked(window.api.setVerdict).mockResolvedValueOnce({ ok: false, error: "boom" });
+    await useKeeper.getState().setVerdict(["a"], { flag: "reject" });
+    expect(useKeeper.getState().records.get("a")?.user.flag).toBe("unrated");
+    expect(useKeeper.getState().undoPast).toHaveLength(0);
+    expect(useKeeper.getState().notice?.kind).toBe("error");
+  });
+
+  it("rating-only verdicts keep the flag", async () => {
+    await useKeeper.getState().setVerdict(["a"], { rating: 4 });
+    const a = useKeeper.getState().records.get("a");
+    expect(a?.user.rating).toBe(4);
+    expect(a?.user.flag).toBe("unrated");
+  });
+});
+
+describe("loupe navigation", () => {
+  it("walks the flat order of loaded sections", () => {
+    useKeeper.getState().openLoupe("a");
+    useKeeper.getState().navLoupe(1);
+    expect(useKeeper.getState().activeId).toBe("b");
+    useKeeper.getState().navLoupe(1);
+    expect(useKeeper.getState().activeId).toBe("c");
+    useKeeper.getState().navLoupe(1);
+    expect(useKeeper.getState().activeId).toBe("c"); // clamped at the end
+  });
+
+  it("follows search results order when a search is active", () => {
+    useKeeper.setState({
+      searchResults: [
+        { assetId: "c", score: 0.9, matched: [] },
+        { assetId: "a", score: 0.5, matched: [] },
+      ],
+    });
+    useKeeper.getState().openLoupe("c");
+    useKeeper.getState().navLoupe(1);
+    expect(useKeeper.getState().activeId).toBe("a");
   });
 });
 
 describe("theme", () => {
-  it("toggleTheme flips the theme, sets the DOM attribute, and persists", () => {
-    useEditor.setState({ theme: "dark" });
-    useEditor.getState().toggleTheme();
-    expect(useEditor.getState().theme).toBe("light");
-    expect(document.documentElement.dataset.theme).toBe("light");
-    expect(localStorage.getItem("keeper:theme")).toBe("light");
-  });
-});
-
-describe("edl history", () => {
-  it("undo/redo walk the edit stack and persist each step", () => {
-    vi.useFakeTimers();
-    useEditor.setState({ edl, slug: "demo", edlPast: [], edlFuture: [] });
-    const s = () => useEditor.getState();
-
-    s().updateEdl((d) => (d.theme.fontFamily = "First"));
-    s().updateEdl((d) => (d.theme.fontFamily = "Second"));
-    expect(s().edl?.theme.fontFamily).toBe("Second");
-    expect(s().edlPast).toHaveLength(2);
-
-    s().undoEdl();
-    expect(s().edl?.theme.fontFamily).toBe("First");
-    s().undoEdl();
-    expect(s().edl?.theme.fontFamily).toBe(edl.theme.fontFamily);
-    expect(s().edlPast).toHaveLength(0);
-    expect(s().edlFuture).toHaveLength(2);
-
-    s().redoEdl();
-    expect(s().edl?.theme.fontFamily).toBe("First");
-    vi.advanceTimersByTime(400);
-    expect(window.api.saveEdl).toHaveBeenCalled();
-  });
-
-  it("a new edit clears the redo stack; external load resets history", () => {
-    useEditor.setState({ edl, slug: "demo", edlPast: [], edlFuture: [] });
-    const s = () => useEditor.getState();
-    s().updateEdl((d) => (d.theme.fontFamily = "A"));
-    s().undoEdl();
-    expect(s().edlFuture).toHaveLength(1);
-    s().updateEdl((d) => (d.theme.fontFamily = "B"));
-    expect(s().edlFuture).toHaveLength(0);
-
-    s().setProject({ edl, slug: "demo" });
-    expect(s().edlPast).toHaveLength(0);
-    expect(s().edlFuture).toHaveLength(0);
-  });
-});
-
-describe("panel layout", () => {
-  it("clamps panel sizes to their limits and persists them", () => {
-    const s = () => useEditor.getState();
-    s().setPanelSize("left", 10_000);
-    expect(s().panelSizes.left).toBe(440);
-    s().setPanelSize("timeline", 10);
-    expect(s().panelSizes.timeline).toBe(160);
-    expect(JSON.parse(localStorage.getItem("keeper:panel-layout")!)).toMatchObject({
-      left: 440,
-      timeline: 160,
-    });
-  });
-
-  it("togglePanels flips focus mode", () => {
-    const s = () => useEditor.getState();
-    const before = s().panelsHidden;
-    s().togglePanels();
-    expect(s().panelsHidden).toBe(!before);
-    s().togglePanels();
-    expect(s().panelsHidden).toBe(before);
-  });
-});
-
-describe("autosave", () => {
-  it("debounces a save to disk after updateEdl", () => {
-    vi.useFakeTimers();
-    useEditor.setState({ edl, slug: "demo" });
-    useEditor.getState().updateEdl((d) => (d.theme.fontFamily = "Inter"));
-    expect(window.api.saveEdl).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(400);
-    expect(window.api.saveEdl).toHaveBeenCalledTimes(1);
-    expect(window.api.saveEdl).toHaveBeenCalledWith("demo", expect.objectContaining({ theme: expect.any(Object) }));
-  });
-
-  it("does not save when there is no slug", () => {
-    vi.useFakeTimers();
-    useEditor.setState({ edl, slug: null });
-    useEditor.getState().updateEdl((d) => (d.theme.fontFamily = "Mono"));
-    vi.advanceTimersByTime(400);
-    expect(window.api.saveEdl).not.toHaveBeenCalled();
+  it("toggles and persists the data attribute", () => {
+    const before = useKeeper.getState().theme;
+    useKeeper.getState().toggleTheme();
+    const after = useKeeper.getState().theme;
+    expect(after).not.toBe(before);
+    expect(document.documentElement.dataset.theme).toBe(after);
   });
 });

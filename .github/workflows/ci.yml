@@ -19,8 +19,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build shared EDL package
-        run: npm run build:edl
+      - name: Build shared schema package
+        run: npm run build:schema
 
       - name: Typecheck
         run: npm run typecheck

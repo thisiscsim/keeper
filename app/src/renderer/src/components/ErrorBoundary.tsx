@@ -37,15 +37,15 @@ export class ErrorBoundary extends Component<Props, State> {
             gap: 12,
             padding: 24,
             textAlign: "center",
-            background: "var(--bg)",
-            color: "var(--fg)",
+            background: "var(--background-page)",
+            color: "var(--foreground-primary)",
           }}
         >
           <div style={{ fontSize: 15 }}>Something went wrong rendering the app.</div>
-          <div className="muted small break" style={{ maxWidth: 560 }}>
+          <div style={{ maxWidth: 560, color: "var(--foreground-muted)", fontSize: 12, overflowWrap: "break-word" }}>
             {this.state.error.message}
           </div>
-          <button className="btn btn-primary" onClick={() => window.location.reload()}>
+          <button className="ui-btn ui-btn--primary ui-btn--md" onClick={() => window.location.reload()}>
             Reload
           </button>
         </div>

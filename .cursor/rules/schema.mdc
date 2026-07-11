@@ -1,0 +1,20 @@
+---
+description: Shared schema package conventions
+globs: packages/schema/**
+---
+
+# Shared schemas (packages/schema)
+
+The schemas are a **security boundary**: catalog rows, taste.json, and LLM judge output are written by agents and models and re-read everywhere. Every field must stay hostile-input-safe.
+
+- Numerics: `.finite()` + explicit bounds (`MAX_DURATION_SEC`; JSON `1e400` parses to `Infinity` and wedges sorting/layout).
+- Paths (`relPath`, `thumbRel`, …): `RelativePathSchema` — no `..`, absolute paths, drive letters, UNC, or NUL. Consumers still confine with `safeJoin`/`safeHomePath` before filesystem use.
+- Ids: `IdSchema` (alphanumeric + `._-`, capped) — ids appear in SQL parameters, file names, and URLs.
+- Strings and arrays get max lengths/sizes. New collection fields need caps too.
+
+## Change protocol
+1. Add the field with a **default** (old catalogs must keep parsing) and mirror the type in `types.ts`.
+2. `npm run build:schema` after every change — the app and scripts import from `dist/`.
+3. If it's a catalog column worth filtering on, add it to the hot columns in `app/scripts/lib/catalog.mjs` (with a migration guarded by `PRAGMA user_version`); otherwise it rides in a JSON side-column.
+4. Add hostile-input coverage to `schema.test.ts` (reject Infinity/traversal/oversize, accept the sane case).
+5. If LLM judge output could violate the new constraint, teach `sanitizeJudge` (`app/scripts/lib/llm-util.mjs`) to repair it.

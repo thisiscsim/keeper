@@ -1,34 +1,32 @@
 ---
-description: Main-process + IPC conventions (path guards, result shapes, keys)
+description: Main process & IPC conventions
 globs: app/src/main/**,app/src/preload/**
-alwaysApply: false
 ---
 
 # Main process & IPC conventions
 
 ## Every renderer-supplied path/id is untrusted
-- Filesystem access keyed by a slug/id MUST go through `safeProjectPath()` / `safeStylePath()` (they throw on escape; they compare against `root + sep`).
-- Validate id shape at the IPC boundary before spawning scripts: `/^[a-z0-9][a-z0-9_-]{0,63}$/i` (see `runScript`).
-- Filenames from the renderer: reject anything where `basename(file) !== file`.
+- Filesystem access under the library MUST go through `safeHomePath()` (throws on escape; compares against `root + sep`).
+- Asset ids are validated at the IPC boundary with `sanitizeIds()` (`/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/`); enum-ish params (flags, media types) are allowlisted before forwarding anywhere.
+- The main process never trusts catalog contents either — paths coming back from the catalog service still go through `safeHomePath()` before `shell.trashItem`/`showItemInFolder`.
 
 ## Result shape
-Handlers never throw across IPC. Return `{ ok: boolean, error?: string }` (plus payload fields):
+Handlers never throw across IPC. Return `{ ok: boolean, error?: string }` (plus payload fields). Service-backed handlers use `serviceResult()` which wraps catalog-service calls into `{ ok, result?, error? }`.
 
-```ts
-ipcMain.handle("thing:do", (_e, slug: string) => {
-  try { ... return { ok: true }; }
-  catch (err) { return { ok: false, error: String(err) }; }
-});
-```
+## The catalog service
+- SQLite access lives in a spawned Node child (`app/scripts/catalog-service.mjs`, line-delimited JSON-RPC over stdio) — the Electron main process must stay free of native/DB modules. Talk to it via `callService(method, params)`; it lazily respawns on exit.
+- New catalog queries: add a method to the service + a thin validated IPC handler + a preload mirror. Don't put query logic in main.
 
 ## Long-running work
-- Spawn engine scripts via `runScript`/`runScriptArgs` — they stream the script's `PHASE`/`PROGRESS` lines to `${prefix}:phase` / `${prefix}:progress` channels.
-- Guard event senders: check `event.sender.isDestroyed()` before `.send()` in delayed callbacks.
+- Spawn engine scripts via `runScriptArgs` — it streams the script's `PHASE`/`PROGRESS` lines to `${prefix}:progress` / `${prefix}:phase` channels. Guard `event.sender.isDestroyed()` before `.send()`.
+- External writes (agent CLIs, pipeline scripts) touch `<home>/.keeper/.stamp`; the stamp watcher debounces and pushes `library:changed` so the renderer refreshes. The app's own service never stamps.
 
 ## Secrets & settings
-- API keys live in `AppSettings` (settings.json) AND are injected into `process.env` via `applyAgentEnv` so spawned scripts inherit them. Env vars from `.env.local`/shell always win — capture the lock in `envLocked` once at startup and never overwrite locked vars.
-- New settings fields: parse defensively in `readSettings` (unknown JSON on disk), update the mirror `AppSettings` interface in `app/src/preload/index.ts`.
+- API keys live in `AppSettings` (settings.json) AND are injected into `process.env` via `applyAgentEnv` (`KEEPER_LLM_*`) so spawned scripts inherit them. Env vars from `.env.local`/shell always win — the lock is captured in `envLocked` once at startup; never overwrite locked vars.
+- New settings fields: parse defensively in `readSettings` (unknown JSON on disk), mirror the `AppSettings` interface in `app/src/preload/index.ts`.
+
+## Destructive operations
+- The ONLY deletion path is `rejects:empty`: user-confirmed in the UI, moves originals to the OS trash via `shell.trashItem` (recoverable), then forgets rows. Never add a hard-delete IPC channel; never let a script or AI verdict trigger deletion.
 
 ## Remember
 - Main-process changes need a dev-app restart (renderer HMR does not reload main/preload). Say so in the PR/summary.
-- Writes to a project's `edl.json` from the app must set `lastSelfWrite` (via `writeEdl`) or the file watcher echoes a reload that clobbers editor state.

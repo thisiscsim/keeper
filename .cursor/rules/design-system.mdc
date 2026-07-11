@@ -10,6 +10,7 @@ alwaysApply: false
 - Colors come from `styles/tokens.css` custom properties (`--background-primary`, `--foreground-secondary`, `--border-primary`, ...). Both themes must work — check `:root[data-theme="dark"]` derivations before adding a raw hex.
 - Radii/spacing/typography: `--radius-*`, `--space-*`, `--font-ui`, `--font-brand`.
 - Needing a "slightly different" color? Prefer `color-mix(in srgb, var(--token) N%, var(--other-token))` over new hex values.
+- Verdict semantics are the one hardcoded exception: keep-green `#2f9e63`, reject-red `#c4384f`, star-gold `#f5c451` (used identically in both themes).
 
 ## Components
 - Reuse the UI kit first: `Button`, `IconButton`, `Badge`, `Modal`, `Field`/`Input`/`TextArea`/`Select`, `Icon` from `components/ui`.
@@ -18,10 +19,11 @@ alwaysApply: false
 - Dialogs/dropdowns must close on Escape (`useEscapeKey`) and outside click.
 
 ## CSS placement
-- Editor chrome styles: `styles/editor.css`. UI kit: `styles/ui.css`. Home + legacy: `styles.css`. Delete dead CSS when retiring a component.
-- File inputs are hidden `<input type="file">` + a styled `upload-area` div; snapshot `FileList` synchronously (it's live and emptied by `input.value = ""`).
+- Library UI styles: `styles/library.css`. UI kit: `styles/ui.css`. Delete dead CSS when retiring a component.
+- Media loads through the `keeper-asset://home/<rel>` protocol via the helpers in `lib/format.ts` (`thumbUrl`/`previewUrl`/`originalUrl`) — never build protocol URLs inline.
+- Grid thumbnails use `loading="lazy"` and day sections lazy-load via IntersectionObserver — keep it that way; a 50k library must open instantly.
 
 ## Store & interaction
-- Every EDL mutation goes through `updateEdl(mutate)` — it's one undo step and schedules the debounced save. Batch multi-asset operations into ONE `updateEdl` call.
-- Editor-wide shortcuts live in `App.tsx` (Cmd+Z, T, Cmd+\, Space) — never inside a component that unmounts (e.g. Timeline in focus mode). Always guard: skip when typing in INPUT/TEXTAREA/SELECT/contentEditable.
-- Long text/media lists: cap visible rows and scroll within (`clip-list-capped` pattern).
+- Every verdict mutation goes through `useKeeper.setVerdict(ids, patch)` — it's optimistic, one undo step, and records the taste signal server-side. Batch multi-asset operations into ONE call.
+- App-wide shortcuts live in `App.tsx` only (P/K keep, X/R reject, U unrated, 0–5 stars, Space loupe, arrows navigate, Cmd+Z undo, T theme, Cmd+F search) — never inside a component that unmounts. Always guard: skip when typing in INPUT/TEXTAREA/SELECT/contentEditable.
+- Records are normalized in one `Map` (`records`); section/search/queue views hold ids only. Merge fetched assets with `mergeRecords`, never store copies.

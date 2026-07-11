@@ -1,27 +1,31 @@
 ---
-description: Engine script conventions (app/scripts — protocol, LLM, safety)
+description: Engine script conventions
 globs: app/scripts/**
-alwaysApply: false
 ---
 
 # Engine script conventions (app/scripts)
 
 ## Contract with the app
-- Plain Node ESM (`.mjs`), spawned by the main process. Communicate over stdout with line protocol: `PHASE <text>`, `PROGRESS <0-100>`, `DONE <result>`; errors to stderr as `ERROR <message>` + non-zero exit.
-- Resolve the project dir from `process.env.APERTURE_PROJECTS_DIR` (fallback `<repo>/projects`), args via `--slug <slug>` style flags.
-- `edl.json` read from disk is untrusted (shareable file): re-check any path derived from it stays inside the project dir before touching the filesystem or ffmpeg.
+- Plain Node ESM (`.mjs`), spawned by the main process (Node >= 22.13 for `node:sqlite`). Communicate over stdout with line protocol: `PHASE <text>`, `PROGRESS <0-100>`, `DONE <json>`; errors to stderr as `ERROR <message>` + non-zero exit.
+- Resolve the library home via `lib/paths.mjs` (`resolveHome()` honors `KEEPER_LIBRARY_DIR`, default `~/Pictures/Keeper`); accept `--library <home>` for overrides.
+- All catalog access goes through `lib/catalog.mjs` (`openCatalog`). Rows are re-validated against `@keeper/schema` on read AND write — catalog rows are untrusted (agents and LLMs write them). Any path from a row must be confined with `safeJoin(home, rel)` before touching the filesystem or ffmpeg.
+- CLI/pipeline contexts open the catalog with `{ stampOnWrite: true }` so the running app refreshes; the app's own catalog service must NOT stamp (it would refresh itself in a loop).
+- Pipeline stages checkpoint per asset (`markStage`) so interrupted runs resume via `reprocess.mjs`.
 
 ## LLM calls
-- Always go through `llm.mjs` (`resolveModel()`, `isLlmConfigured()`, `reasoningEffort()`); never instantiate a provider directly.
+- Always go through `llm.mjs` (`resolveModel()`, `isLlmConfigured()`, `reasoningEffort()`); never instantiate a provider directly. Env: `KEEPER_LLM_PROVIDER/MODEL/BASE_URL/API_KEY`.
 - Cap output: `maxOutputTokens` set explicitly. `providerOptions: { openai: { reasoningEffort: reasoningEffort() } }`.
-- Model output is repaired, not trusted: `extractJson` → `sanitizeEdl` → `parseEdl`, with one retry carrying the validation error back to the model.
-- Deterministic insurance after every whole-EDL model response: `enforceStyle` (look) and `restoreAudioTracks` (never lose music/voiceover).
+- Model output is repaired, not trusted: `extractJson` -> `sanitizeJudge` -> zod parse (`lib/llm-util.mjs`), with one retry carrying the validation error back to the model. Hallucinated asset ids are dropped.
+- Respect the budget: the judge never analyzes more than `--budget`/`KEEPER_AI_BUDGET` items, and only sends downscaled thumbnails, never originals.
 
 ## Media
-- ffmpeg = `ffmpeg-static` import; spawn argv arrays only (no shell strings).
-- Voice/TTS audio must be loudness-normalized (two-pass loudnorm, −14 LUFS / −1.5 dBTP) before landing in a project.
-- Cache expensive synth/analysis keyed by content hash so re-runs don't re-burn API credits.
+- ffmpeg = `ffmpeg-static` import; spawn argv arrays only (no shell strings). No ffprobe exists — durations come from exiftool or the ffmpeg stderr banner trick.
+- Pixel math (blur, exposure, pHash) happens in pure JS over grayscale buffers piped from ffmpeg (`extractGray`) — no native image libraries.
+- Decode chain for stills: jpeg/png/webp/tiff via ffmpeg; RAW via exiftool embedded-preview extraction; HEIC via `sips` on macOS (ffmpeg fallback). Extend `lib/media.mjs`, don't inline decoders.
+
+## Safety
+- Scripts never delete or move user media. The only deletion path is the app's "empty rejects" (OS trash, user-confirmed).
 
 ## Testing
-- Pure logic lives in `*-util.mjs` with a sibling `*.test.mjs` (vitest node project). Scripts themselves stay thin.
+- Pure logic lives in `lib/*.mjs` with a sibling `*.test.mjs` (vitest node project). Scripts themselves stay thin.
 - `node --check app/scripts/<file>.mjs` before committing.

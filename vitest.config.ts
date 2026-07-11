@@ -8,9 +8,9 @@ export default defineConfig({
     projects: [
       {
         test: {
-          name: "edl",
+          name: "node",
           environment: "node",
-          include: ["packages/edl/**/*.test.ts", "app/scripts/**/*.test.mjs"],
+          include: ["packages/schema/**/*.test.ts", "app/scripts/**/*.test.mjs"],
         },
       },
       {
